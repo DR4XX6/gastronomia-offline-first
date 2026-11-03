@@ -8,6 +8,7 @@ import {
 } from '../../db/database'
 import { RecipeForm } from './RecipeForm'
 import { RecipeList } from './RecipeList'
+import { RecipeIngredientsPanel } from './RecipeIngredientsPanel'
 
 export function RecipeManager() {
     const [recipes, setRecipes] = useState<Recipe[]>([])
@@ -53,7 +54,7 @@ export function RecipeManager() {
                 Gestión de recetas
             </h2>
             <p className="mb-4 text-sm text-slate-600">
-                Versión inicial: registra recetas por nombre. La asignación de ingredientes se incorporará después.
+                Registra recetas y asocia ingredientes disponibles en el catálogo local.
             </p>
 
             {error && (
@@ -76,6 +77,7 @@ export function RecipeManager() {
                         onUpdate={(id, name) => runOperation(() => updateRecipe(id, name))}
                         onDelete={(id) => runOperation(() => deleteRecipe(id))}
                     />
+                    <RecipeIngredientsPanel recipes={recipes} />
                 </>
             )}
         </section>

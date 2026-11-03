@@ -1,6 +1,7 @@
 import sqlite3InitModule from '@sqlite.org/sqlite-wasm'
 import type { Ingredient } from '../domain/ingredient'
 import type { Recipe } from '../domain/recipe'
+import type { RecipeIngredient } from '../domain/recipeIngredient'
 
 type IngredientRequest =
     | { type: 'ingredients:list'; requestId: number }
@@ -14,7 +15,18 @@ type RecipeRequest =
     | { type: 'recipes:update'; requestId: number; id: string; name: string }
     | { type: 'recipes:delete'; requestId: number; id: string }
 
-type DatabaseRequest = IngredientRequest | RecipeRequest
+type RecipeIngredientRequest =
+    | { type: 'recipe-ingredients:list'; requestId: number; recipeId: string }
+    | { type: 'recipe-ingredients:add'; requestId: number; recipeIngredient: RecipeIngredient }
+    | { type: 'recipe-ingredients:delete'; requestId: number; id: string; recipeId: string }
+
+type DatabaseRequest = IngredientRequest | RecipeRequest | RecipeIngredientRequest
+
+function isRecipeIngredientRequest(
+    request: DatabaseRequest
+): request is RecipeIngredientRequest {
+    return request.type.startsWith('recipe-ingredients:')
+}
 
 function isRecipeRequest(request: DatabaseRequest): request is RecipeRequest {
     return request.type.startsWith('recipes:')
@@ -133,7 +145,7 @@ async function initializeDatabase() {
         const fechaActual = new Date().toISOString()
         db.exec({
             sql: `INSERT OR IGNORE INTO _app_meta (key, value)
-                  VALUES ('opfs_first_write', ?);`,
+                    VALUES ('opfs_first_write', ?);`,
             bind: [fechaActual],
         })
         const fechaGuardada = db.selectValue(
@@ -147,6 +159,105 @@ async function initializeDatabase() {
         self.onmessage = (event: MessageEvent<DatabaseRequest>) => {
             const request = event.data
             try {
+                // Vinculación entre recetas e ingredientes (sin cambiar el esquema 3).
+                if (isRecipeIngredientRequest(request)) {
+                    const recipeId = (
+                        request.type === 'recipe-ingredients:add'
+                            ? request.recipeIngredient.recipeId
+                            : request.recipeId
+                    ).trim()
+
+                    if (!recipeId) {
+                        throw new Error('La receta es obligatoria')
+                    }
+
+                    const recipeExists = db.selectValue(
+                        'SELECT 1 FROM recipes WHERE id = ?',
+                        [recipeId]
+                    )
+                    if (recipeExists !== 1) {
+                        throw new Error('No se encontró la receta')
+                    }
+
+                    if (request.type === 'recipe-ingredients:add') {
+                        const id = request.recipeIngredient.id.trim()
+                        const ingredientId = request.recipeIngredient.ingredientId.trim()
+                        if (!id || !ingredientId) {
+                            throw new Error('Los identificadores son obligatorios')
+                        }
+
+                        const ingredientExists = db.selectValue(
+                            'SELECT 1 FROM ingredients WHERE id = ?',
+                            [ingredientId]
+                        )
+                        if (ingredientExists !== 1) {
+                            throw new Error('No se encontró el ingrediente')
+                        }
+
+                        const associationExists = db.selectValue(
+                            `SELECT 1 FROM recipe_ingredients
+                            WHERE recipe_id = ? AND ingredient_id = ? LIMIT 1`,
+                            [recipeId, ingredientId]
+                        )
+                        if (associationExists === 1) {
+                            throw new Error('El ingrediente ya pertenece a esta receta')
+                        }
+
+                        const insertedRows = db.selectObjects(
+                            `INSERT INTO recipe_ingredients (id, recipe_id, ingredient_id)
+                            VALUES (?, ?, ?)
+                            RETURNING id, recipe_id, ingredient_id`,
+                            [id, recipeId, ingredientId]
+                        )
+                        if (insertedRows.length !== 1 || insertedRows[0].id !== id) {
+                            throw new Error('SQLite no confirmó la asociación')
+                        }
+                    }
+
+                    if (request.type === 'recipe-ingredients:delete') {
+                        const id = request.id.trim()
+                        if (!id) {
+                            throw new Error('La asociación es obligatoria')
+                        }
+                        db.exec({
+                            sql: `DELETE FROM recipe_ingredients
+                                    WHERE id = ? AND recipe_id = ?`,
+                            bind: [id, recipeId],
+                        })
+                        if (db.selectValue('SELECT changes()') !== 1) {
+                            throw new Error('No se encontró la asociación')
+                        }
+                    }
+
+                    const rows = db.selectObjects(
+                        `SELECT id, recipe_id, ingredient_id
+                        FROM recipe_ingredients
+                        WHERE recipe_id = ?
+                        ORDER BY ingredient_id, id`,
+                        [recipeId]
+                    )
+                    const recipeIngredients: RecipeIngredient[] = rows.map((row) => {
+                        if (
+                            typeof row.id !== 'string' ||
+                            typeof row.recipe_id !== 'string' ||
+                            typeof row.ingredient_id !== 'string'
+                        ) {
+                            throw new Error('La asociación contiene datos inválidos')
+                        }
+                        return {
+                            id: row.id,
+                            recipeId: row.recipe_id,
+                            ingredientId: row.ingredient_id,
+                        }
+                    })
+                    self.postMessage({
+                        type: 'recipe-ingredients-result',
+                        requestId: request.requestId,
+                        recipeIngredients,
+                    })
+                    return
+                }
+
                 // CRUD de recetas. Cada operación devuelve el listado vigente.
                 if (isRecipeRequest(request)) {
                     if (request.type === 'recipes:add') {
@@ -158,8 +269,8 @@ async function initializeDatabase() {
 
                         const insertedRows = db.selectObjects(
                             `INSERT INTO recipes (id, name)
-                             VALUES (?, ?)
-                             RETURNING id, name`,
+                            VALUES (?, ?)
+                            RETURNING id, name`,
                             [id, name]
                         )
                         if (insertedRows.length !== 1 || insertedRows[0].id !== id) {
@@ -231,8 +342,8 @@ async function initializeDatabase() {
                     }
                     const insertedRows = db.selectObjects(
                         `INSERT INTO ingredients (id, name)
-                         VALUES (?, ?)
-                         RETURNING id, name`,
+                        VALUES (?, ?)
+                        RETURNING id, name`,
                         [id, name]
                     )
                     if (insertedRows.length !== 1 || insertedRows[0].id !== id) {
@@ -299,7 +410,11 @@ async function initializeDatabase() {
                 })
             } catch (error) {
                 self.postMessage({
-                    type: isRecipeRequest(request) ? 'recipes-error' : 'ingredients-error',
+                    type: isRecipeIngredientRequest(request)
+                        ? 'recipe-ingredients-error'
+                        : isRecipeRequest(request)
+                            ? 'recipes-error'
+                            : 'ingredients-error',
                     requestId: request.requestId,
                     message: error instanceof Error ? error.message : String(error),
                 })

@@ -1,8 +1,9 @@
 import type { Ingredient } from '../domain/ingredient'
 import type { Recipe } from '../domain/recipe'
+import type { RecipeIngredient } from '../domain/recipeIngredient'
 
 type DatabaseMessage =
-    | {
+        | {
             type: 'database-ready'
             version: string
             firstWriteAt: string
@@ -31,6 +32,16 @@ type DatabaseMessage =
             requestId: number
             message: string
         }
+    | {
+            type: 'recipe-ingredients-result'
+            requestId: number
+            recipeIngredients: RecipeIngredient[]
+        }
+    | {
+            type: 'recipe-ingredients-error'
+            requestId: number
+            message: string
+        }
 
 type IngredientCommand =
     | { type: 'ingredients:list' }
@@ -44,17 +55,27 @@ type RecipeCommand =
     | { type: 'recipes:update'; id: string; name: string }
     | { type: 'recipes:delete'; id: string }
 
+type RecipeIngredientCommand =
+    | { type: 'recipe-ingredients:list'; recipeId: string }
+    | { type: 'recipe-ingredients:add'; recipeIngredient: RecipeIngredient }
+    | { type: 'recipe-ingredients:delete'; id: string; recipeId: string }
+
 type PendingRequest =
     | {
-            kind: 'ingredients'
-            resolve: (ingredients: Ingredient[]) => void
-            reject: (error: Error) => void
-        }
+          kind: 'ingredients'
+          resolve: (ingredients: Ingredient[]) => void
+          reject: (error: Error) => void
+      }
     | {
-            kind: 'recipes'
-            resolve: (recipes: Recipe[]) => void
-            reject: (error: Error) => void
-        }
+          kind: 'recipes'
+          resolve: (recipes: Recipe[]) => void
+          reject: (error: Error) => void
+      }
+    | {
+          kind: 'recipeIngredients'
+          resolve: (recipeIngredients: RecipeIngredient[]) => void
+          reject: (error: Error) => void
+      }
 
 let worker: Worker | null = null
 let databasePromise: Promise<string> | null = null
@@ -124,7 +145,7 @@ export function initializeLocalDatabase(): Promise<string> {
                             new Error('Respuesta inesperada para ingredientes')
                         )
                     }
-                } else {
+                } else if (request.kind === 'recipes') {
                     if (message.type === 'recipes-result') {
                         request.resolve(message.recipes)
                     } else if (message.type === 'recipes-error') {
@@ -132,6 +153,16 @@ export function initializeLocalDatabase(): Promise<string> {
                     } else {
                         request.reject(
                             new Error('Respuesta inesperada para recetas')
+                        )
+                    }
+                } else {
+                    if (message.type === 'recipe-ingredients-result') {
+                        request.resolve(message.recipeIngredients)
+                    } else if (message.type === 'recipe-ingredients-error') {
+                        request.reject(new Error(message.message))
+                    } else {
+                        request.reject(
+                            new Error('Respuesta inesperada para asociaciones')
                         )
                     }
                 }
@@ -207,6 +238,33 @@ async function sendRecipeRequest(
             reject(
                 error instanceof Error ? error : new Error(String(error))
             )
+        }
+    })
+}
+
+async function sendRecipeIngredientRequest(
+    command: RecipeIngredientCommand
+): Promise<RecipeIngredient[]> {
+    await initializeLocalDatabase()
+
+    return new Promise<RecipeIngredient[]>((resolve, reject) => {
+        if (!worker) {
+            reject(new Error('SQLite no está disponible'))
+            return
+        }
+
+        const requestId = ++nextRequestId
+        pendingRequests.set(requestId, {
+            kind: 'recipeIngredients',
+            resolve,
+            reject,
+        })
+
+        try {
+            worker.postMessage({ ...command, requestId })
+        } catch (error) {
+            pendingRequests.delete(requestId)
+            reject(error instanceof Error ? error : new Error(String(error)))
         }
     })
 }
@@ -324,5 +382,58 @@ export function deleteRecipe(id: string): Promise<Recipe[]> {
     return sendRecipeRequest({
         type: 'recipes:delete',
         id: cleanId,
+    })
+}
+
+// Asociaciones entre recetas e ingredientes
+export function listRecipeIngredients(
+    recipeId: string
+): Promise<RecipeIngredient[]> {
+    const cleanRecipeId = recipeId.trim()
+    if (!cleanRecipeId) {
+        return Promise.reject(new Error('La receta es obligatoria'))
+    }
+    return sendRecipeIngredientRequest({
+        type: 'recipe-ingredients:list',
+        recipeId: cleanRecipeId,
+    })
+}
+
+export function addRecipeIngredient(
+    recipeId: string,
+    ingredientId: string
+): Promise<RecipeIngredient[]> {
+    const cleanRecipeId = recipeId.trim()
+    const cleanIngredientId = ingredientId.trim()
+    if (!cleanRecipeId || !cleanIngredientId) {
+        return Promise.reject(
+            new Error('La receta y el ingrediente son obligatorios')
+        )
+    }
+    return sendRecipeIngredientRequest({
+        type: 'recipe-ingredients:add',
+        recipeIngredient: {
+            id: crypto.randomUUID(),
+            recipeId: cleanRecipeId,
+            ingredientId: cleanIngredientId,
+        },
+    })
+}
+
+export function deleteRecipeIngredient(
+    recipeId: string,
+    id: string
+): Promise<RecipeIngredient[]> {
+    const cleanRecipeId = recipeId.trim()
+    const cleanId = id.trim()
+    if (!cleanRecipeId || !cleanId) {
+        return Promise.reject(
+            new Error('La receta y la asociación son obligatorias')
+        )
+    }
+    return sendRecipeIngredientRequest({
+        type: 'recipe-ingredients:delete',
+        id: cleanId,
+        recipeId: cleanRecipeId,
     })
 }
