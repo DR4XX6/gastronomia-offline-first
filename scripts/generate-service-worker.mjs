@@ -63,6 +63,19 @@ self.addEventListener('activate', (event) => {
   })())
 })
 
+self.addEventListener('message', (event) => {
+  if (event.data?.type !== 'VERIFY_OFFLINE' || !event.ports[0]) return
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME)
+    const missing = []
+    for (const path of PRECACHE) {
+      const url = new URL(path, self.registration.scope).href
+      if (!(await cache.match(url))) missing.push(path)
+    }
+    event.ports[0].postMessage({ type: 'OFFLINE_STATUS', ready: missing.length === 0, missing })
+  })())
+})
+
 self.addEventListener('fetch', (event) => {
   const request = event.request
   const url = new URL(request.url)
