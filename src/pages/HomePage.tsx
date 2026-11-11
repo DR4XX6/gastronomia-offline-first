@@ -1,4 +1,5 @@
 import ModuleCard from '../components/ModuleCard'
+import OfflineStatus from '../components/OfflineStatus'
 import IngredientManager from '../features/ingredients/IngredientManager'
 import { RecipeManager } from '../features/recipes/RecipeManager'
 
@@ -22,6 +23,8 @@ function HomePage() {
                         ingredientes y costos.
                     </p>
                 </header>
+
+                <OfflineStatus />
 
                 {/* Tarjetas informativas */}
                 <section className="mt-10 grid gap-6 md:grid-cols-3">
