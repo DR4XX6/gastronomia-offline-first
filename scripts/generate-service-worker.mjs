@@ -41,17 +41,25 @@ const PRECACHE = ${JSON.stringify(assets, null, 2)}
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME)
-    await cache.addAll(PRECACHE.map((path) => new URL(path, self.registration.scope).href))
-    await self.skipWaiting()
+    const urls = PRECACHE.map((path) => new URL(path, self.registration.scope).href)
+    await cache.addAll(urls)
+    const missing = (await Promise.all(urls.map(async (url) => (await cache.match(url)) ? null : url)))
+      .filter(Boolean)
+    if (missing.length) {
+      throw new Error('Precaché incompleto: ' + missing.join(', '))
+    }
+    // No forzamos el reemplazo de una versión que sigue abierta.
+    // Así la página anterior conserva sus scripts y estilos hasta cerrarse.
   })())
 })
 
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     const keys = await caches.keys()
-    await Promise.all(keys.filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
-      .map((key) => caches.delete(key)))
-    await self.clients.claim()
+    const older = keys.filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
+    // Se conserva la última caché anterior para páginas que todavía utilicen
+    // archivos con hashes de la versión previa.
+    await Promise.all(older.slice(0, -1).map((key) => caches.delete(key)))
   })())
 })
 
@@ -67,8 +75,11 @@ self.addEventListener('fetch', (event) => {
       const index = await cache.match(new URL('./index.html', scope).href)
       if (index) return index
     }
-    const response = await cache.match(request, { ignoreSearch: true })
-    return response || fetch(request)
+    // Buscar en todas las versiones conservadas. Una página abierta podría
+    // solicitar el JS/CSS de la compilación anterior.
+    const response = await caches.match(request, { ignoreSearch: true })
+    if (response) return response
+    return fetch(request)
   })())
 })
 `
