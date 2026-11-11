@@ -90,7 +90,10 @@ self.addEventListener('fetch', (event) => {
     }
     // Buscar en todas las versiones conservadas. Una página abierta podría
     // solicitar el JS/CSS de la compilación anterior.
-    const response = await caches.match(request, { ignoreSearch: true })
+    // Los recursos precacheados y los módulos ES pueden tener cabeceras
+    // distintas (p. ej. Origin), y Vary puede impedir una coincidencia
+    // aunque la URL esté correctamente guardada.
+    const response = await caches.match(url.href, { ignoreVary: true })
     if (response) return response
     return fetch(request)
   })())
