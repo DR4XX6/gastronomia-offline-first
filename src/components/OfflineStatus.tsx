@@ -5,6 +5,7 @@ type WorkerState = 'preparing' | 'ready' | 'unavailable' | 'error'
 export default function OfflineStatus() {
   const [online, setOnline] = useState(navigator.onLine)
   const [workerState, setWorkerState] = useState<WorkerState>('preparing')
+  const [revision, setRevision] = useState<string | null>(null)
 
   useEffect(() => {
     let active = true
@@ -29,6 +30,7 @@ export default function OfflineStatus() {
       if (!active) return
       const controller = navigator.serviceWorker.controller
       setWorkerState('preparing')
+      setRevision(null)
       if (!controller) return
 
       const channel = new MessageChannel()
@@ -40,13 +42,15 @@ export default function OfflineStatus() {
       channel.port1.onmessage = (event: MessageEvent<{
         type: string
         ready: boolean
+        revision?: string
         missing?: string[]
       }>) => {
         window.clearTimeout(timer)
         channel.port1.close()
         if (!active) return
         const message = event.data
-        if (message?.type === 'OFFLINE_STATUS' && message.ready === true) {
+        if (message?.type === 'OFFLINE_STATUS' && message.ready === true && typeof message.revision === 'string') {
+          setRevision(message.revision ?? null)
           setWorkerState('ready')
         } else {
           console.warn('Recursos offline faltantes:', message?.missing ?? [])
@@ -99,6 +103,7 @@ export default function OfflineStatus() {
         {ready ? 'PWA lista para uso sin internet' : 'Preparación offline pendiente'}
       </p>
       <p className="mt-1">{message}</p>
+      {revision && <p className="mt-1 text-xs text-slate-600">Caché verificada: {revision}</p>}
       <p className="mt-1 text-xs text-slate-600">
         Las recetas y los ingredientes se guardan en SQLite/OPFS del dispositivo, no en la caché.
       </p>
