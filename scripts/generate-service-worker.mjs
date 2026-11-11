@@ -33,46 +33,74 @@ for (let index = 0; index < files.length; index++) {
 }
 const revision = hash.digest('hex').slice(0, 12)
 const assets = ['./', ...paths.map((path) => `./${path}`)]
-const source = `/* Generado automáticamente: npm run build. No modificar manualmente. */
+const source = `/* Generado automáticamente para producción. Revisión: ${revision} */
 const CACHE_PREFIX = 'gestor-gastronomico-offline-'
 const CACHE_NAME = CACHE_PREFIX + '${revision}'
 const PRECACHE = ${JSON.stringify(assets, null, 2)}
+const PRECACHE_URLS = PRECACHE.map((path) => new URL(path, self.registration.scope).href)
+
+async function findCachedResponse(url) {
+  // Leemos la clave exacta guardada por Cache.addAll. De este modo,
+  // las cabeceras Vary: Origin no cambian la selección de recursos.
+  const cacheNames = await caches.keys()
+  const names = [CACHE_NAME, ...cacheNames.filter((name) =>
+    name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME
+  ).reverse()]
+
+  for (const name of names) {
+    const cache = await caches.open(name)
+    const entries = await cache.keys()
+    const storedRequest = entries.find((entry) => entry.url === url)
+    if (!storedRequest) continue
+
+    const response = await cache.match(storedRequest, { ignoreVary: true })
+    if (response) return response
+  }
+  return undefined
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME)
-    const urls = PRECACHE.map((path) => new URL(path, self.registration.scope).href)
-    await cache.addAll(urls)
-    const missing = (await Promise.all(urls.map(async (url) => (await cache.match(url)) ? null : url)))
-      .filter(Boolean)
+    await cache.addAll(PRECACHE_URLS)
+    const entries = await cache.keys()
+    const missing = PRECACHE_URLS.filter((url) =>
+      !entries.some((entry) => entry.url === url)
+    )
     if (missing.length) {
       throw new Error('Precaché incompleto: ' + missing.join(', '))
     }
-    // No forzamos el reemplazo de una versión que sigue abierta.
-    // Así la página anterior conserva sus scripts y estilos hasta cerrarse.
+    // Activamos la versión nueva solo después de confirmar el precaché.
+    await self.skipWaiting()
   })())
 })
 
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
-    const keys = await caches.keys()
-    const older = keys.filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
-    // Se conserva la última caché anterior para páginas que todavía utilicen
-    // archivos con hashes de la versión previa.
-    await Promise.all(older.slice(0, -1).map((key) => caches.delete(key)))
+    const names = await caches.keys()
+    const previous = names.filter((name) =>
+      name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME
+    )
+    // Una caché antigua se conserva por compatibilidad con páginas abiertas.
+    await Promise.all(previous.slice(0, -1).map((name) => caches.delete(name)))
+    await self.clients.claim()
   })())
 })
 
 self.addEventListener('message', (event) => {
   if (event.data?.type !== 'VERIFY_OFFLINE' || !event.ports[0]) return
   event.waitUntil((async () => {
-    const cache = await caches.open(CACHE_NAME)
     const missing = []
-    for (const path of PRECACHE) {
-      const url = new URL(path, self.registration.scope).href
-      if (!(await cache.match(url))) missing.push(path)
+    for (const url of PRECACHE_URLS) {
+      const response = await findCachedResponse(url)
+      if (!response || !response.ok) missing.push(url)
     }
-    event.ports[0].postMessage({ type: 'OFFLINE_STATUS', ready: missing.length === 0, missing })
+    event.ports[0].postMessage({
+      type: 'OFFLINE_STATUS',
+      revision: '${revision}',
+      ready: missing.length === 0,
+      missing
+    })
   })())
 })
 
@@ -80,21 +108,22 @@ self.addEventListener('fetch', (event) => {
   const request = event.request
   const url = new URL(request.url)
   const scope = new URL(self.registration.scope)
-  if (request.method !== 'GET' || url.origin !== scope.origin || !url.pathname.startsWith(scope.pathname)) return
+  if (request.method !== 'GET' || url.origin !== scope.origin ||
+      !url.pathname.startsWith(scope.pathname)) return
 
   event.respondWith((async () => {
-    const cache = await caches.open(CACHE_NAME)
-    if (request.mode === 'navigate') {
-      const index = await cache.match(new URL('./index.html', scope).href)
-      if (index) return index
+    const resourceUrl = request.mode === 'navigate'
+      ? new URL('./index.html', scope).href
+      : url.href
+    const cached = await findCachedResponse(resourceUrl)
+    if (cached) return cached
+
+    // Solo hacemos red cuando el recurso no pertenece al precaché.
+    // Si faltara un recurso esencial, emitimos un mensaje de diagnóstico.
+    if (PRECACHE_URLS.includes(resourceUrl)) {
+      console.error('Recurso precacheado no encontrado:', resourceUrl,
+        'revisión:', '${revision}')
     }
-    // Buscar en todas las versiones conservadas. Una página abierta podría
-    // solicitar el JS/CSS de la compilación anterior.
-    // Los recursos precacheados y los módulos ES pueden tener cabeceras
-    // distintas (p. ej. Origin), y Vary puede impedir una coincidencia
-    // aunque la URL esté correctamente guardada.
-    const response = await caches.match(url.href, { ignoreVary: true })
-    if (response) return response
     return fetch(request)
   })())
 })
