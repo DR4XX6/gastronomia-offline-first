@@ -39,3 +39,11 @@ Si Network indica que `index.html` fue servido por el Service Worker pero `asset
 7. Si persiste la pantalla blanca, inspecciona Application → Cache Storage y compara las rutas JS/CSS con las solicitadas por Network antes de borrar nada adicional.
 
 La lógica del Service Worker conserva una caché anterior y busca recursos entre las cachés disponibles, para reducir fallos por versiones de activos diferentes.
+
+## Corrección posterior a la prueba de pantalla blanca
+Se observó en Edge que `index.html` respondía desde el Service Worker, pero los archivos `assets/index-*.js` y `assets/index-*.css` fallaban en modo Offline pese a figurar en Cache Storage. La causa concreta no se confirma sin comprobar el Worker activo. Se reforzó la implementación con:
+- Búsqueda por las claves de solicitudes almacenadas mediante `Cache.keys()` y `Cache.match(..., { ignoreVary: true })`.
+- Activación del Service Worker tras completar el precaché y toma de control de las páginas.
+- Un identificador de revisión que se verifica y muestra en la interfaz antes de anunciar “PWA lista para uso sin internet”.
+
+Para validar esta corrección, primero ejecutar `git pull --ff-only`, `npm run build` y `npm run preview -- --host 127.0.0.1 --port 4173`. Mantener **Network → No throttling** y **Disable cache** desmarcado. Abrir el sitio, recargar con conexión y comprobar que la interfaz muestra “Caché verificada: <revisión>”. Solo entonces activar **Offline**, recargar y completar operaciones CRUD. Si continúa fallando, revisar **Application → Service Workers** para detectar un Worker en espera y guardar una captura de la versión activa. No borrar OPFS.
