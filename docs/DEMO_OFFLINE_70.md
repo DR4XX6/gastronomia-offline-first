@@ -27,3 +27,15 @@
 “Se incorporó una capa PWA con Service Worker para guardar los recursos de la aplicación, incluyendo sus módulos JavaScript y SQLite WebAssembly. En la prueba de la compilación de producción, la interfaz abrió después de desconectar la red y las operaciones de ingredientes y recetas continuaron usando la base SQLite/OPFS local. Se conservaron evidencias de recarga, consulta y modificación sin red. Se mantiene pendiente la validación académica de cálculos, exportación PDF, respaldos, pruebas de otros dispositivos y piloto con estudiantes”.
 
 El porcentaje 70% es una **estimación interna** condicionada a la evidencia de funcionamiento; no representa aprobación institucional ni el 70% de una lista de módulos.
+
+## Recuperación ante pantalla blanca y JS/CSS no disponibles sin red
+Si Network indica que `index.html` fue servido por el Service Worker pero `assets/index-*.js` o `assets/index-*.css` fallan:
+1. Vuelve a **No throttling** y detén el preview con Ctrl+C.
+2. En la rama `feat/pwa-offline-demo-70-20261110`, ejecuta `git pull --ff-only` y `npm run build`.
+3. En Edge DevTools → Application → Service Workers, pulsa **Unregister** para el Service Worker de `http://127.0.0.1:4173/`. En Application → Cache Storage elimina únicamente los cachés llamados `gestor-gastronomico-offline-*`.
+4. **Nunca pulses «Clear site data» ni «Clear storage»: eso también puede borrar SQLite/OPFS.**
+5. Vuelve a ejecutar `npm run preview -- --host 127.0.0.1 --port 4173`, abre la URL exacta y, con conexión, recarga una vez. Espera el mensaje **PWA lista para uso sin internet**, ahora condicionado a la verificación del precaché.
+6. Cambia Network → Offline y recarga. Prueba las operaciones y su persistencia.
+7. Si persiste la pantalla blanca, inspecciona Application → Cache Storage y compara las rutas JS/CSS con las solicitadas por Network antes de borrar nada adicional.
+
+La lógica del Service Worker conserva una caché anterior y busca recursos entre las cachés disponibles, para reducir fallos por versiones de activos diferentes.
