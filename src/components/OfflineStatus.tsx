@@ -24,10 +24,37 @@ export default function OfflineStatus() {
       }
     }
 
+    // La existencia de un controlador NO garantiza que el precaché esté completo.
     const refreshController = () => {
-      if (active) {
-        setWorkerState(navigator.serviceWorker.controller ? 'ready' : 'preparing')
+      if (!active) return
+      const controller = navigator.serviceWorker.controller
+      setWorkerState('preparing')
+      if (!controller) return
+
+      const channel = new MessageChannel()
+      const timer = window.setTimeout(() => {
+        channel.port1.close()
+        if (active) setWorkerState('error')
+      }, 5000)
+
+      channel.port1.onmessage = (event: MessageEvent<{
+        type: string
+        ready: boolean
+        missing?: string[]
+      }>) => {
+        window.clearTimeout(timer)
+        channel.port1.close()
+        if (!active) return
+        const message = event.data
+        if (message?.type === 'OFFLINE_STATUS' && message.ready === true) {
+          setWorkerState('ready')
+        } else {
+          console.warn('Recursos offline faltantes:', message?.missing ?? [])
+          setWorkerState('error')
+        }
       }
+
+      controller.postMessage({ type: 'VERIFY_OFFLINE' }, [channel.port2])
     }
     navigator.serviceWorker.addEventListener('controllerchange', refreshController)
     refreshController()
@@ -57,8 +84,8 @@ export default function OfflineStatus() {
     : workerState === 'unavailable'
       ? 'Para activar la PWA, compila y ejecuta la versión de producción en localhost o HTTPS.'
       : workerState === 'error'
-        ? 'No se pudo instalar la caché offline en este navegador.'
-        : 'Preparando los archivos necesarios para abrir la aplicación sin red.'
+        ? 'La caché offline está incompleta o pendiente de actualización. Con conexión activa, cierra la pestaña y vuelve a abrirla.'
+        : 'Preparando la caché offline. En la primera instalación, recarga la página una vez con conexión.'
 
   return (
     <aside
