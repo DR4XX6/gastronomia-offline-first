@@ -1,0 +1,19 @@
+{
+  "name": "Gestor Gastronómico | ITSTE",
+  "short_name": "Gestor Gastronómico",
+  "description": "Gestión local de ingredientes y recetas para prácticas de Gastronomía.",
+  "lang": "es-MX",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f1f5f9",
+  "theme_color": "#166534",
+  "icons": [
+    {
+      "src": "./favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
