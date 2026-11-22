@@ -376,6 +376,22 @@ async function initializeDatabase() {
                     if (!id) {
                         throw new Error('El identificador es obligatorio')
                     }
+
+                    // Respetar ON DELETE RESTRICT e informar claramente al usuario.
+                    // No eliminar relaciones ni recetas en cascada desde el catálogo.
+                    const references = db.selectValue(
+                        'SELECT COUNT(*) FROM recipe_ingredients WHERE ingredient_id = ?',
+                        [id]
+                    )
+                    if (typeof references !== 'number') {
+                        throw new Error('No se pudieron comprobar las asociaciones del ingrediente')
+                    }
+                    if (references > 0) {
+                        throw new Error(
+                            `No se puede eliminar este ingrediente: aparece en ${references} asociación(es) de recetas. Primero retíralo de todas las recetas.`
+                        )
+                    }
+
                     db.exec({
                         sql: 'DELETE FROM ingredients WHERE id = ?',
                         bind: [id],
