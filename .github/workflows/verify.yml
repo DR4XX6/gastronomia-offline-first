@@ -1,0 +1,41 @@
+name: Verificación técnica del Gestor Gastronómico
+
+on:
+  push:
+    branches:
+      - feat/costeo-80-20261122
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Vitest y compilación de producción
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Obtener código
+        uses: actions/checkout@v4
+      - name: Preparar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Instalar dependencias reproduciblemente
+        run: npm ci
+      - name: Ejecutar pruebas unitarias
+        run: npx vitest run
+      - name: Compilar PWA y generar Service Worker
+        run: npm run build
+      - name: Comprobar artefactos esenciales de producción
+        shell: bash
+        run: |
+          test -f dist/index.html
+          test -f dist/service-worker.js
+          test -f dist/manifest.webmanifest
+          find dist -type f -name '*.wasm' | grep -q .
+          echo "Artefactos HTML, Service Worker, manifiesto y SQLite WASM presentes."
