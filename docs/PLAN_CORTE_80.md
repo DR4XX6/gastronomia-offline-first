@@ -64,3 +64,50 @@ respaldo/restauración y ajustes finales quedan en el alcance posterior.
 
 **Precaución:** no usar “Clear storage”, “Clear site data”, cambiar arbitrariamente
 el origen ni borrar la base OPFS durante la depuración.
+
+
+## Implementación de costeo v4 — 22/11/2026 (pendiente de ejecutar en navegador)
+Se incorporó el módulo de configuración y cálculo en la rama de trabajo:
+- `src/domain/costingSettings.ts`: datos y vista previa de costeo; prohíbe mostrar
+  totales cuando falten precio, cantidad o porciones.
+- `src/db/sqlite.worker.ts`: migración incremental de v3 a v4, con tres tablas
+  nuevas: `ingredient_prices`, `recipe_servings`, `recipe_line_quantities`.
+  No se borran ni reconstruyen tablas anteriores. Se mantienen claves foráneas.
+- `src/db/database.ts`: mensajes nuevos del Worker y API tipada de costeo.
+- `src/features/costing/CostingManager.tsx`: interfaz para precio de compra,
+  presentación comercial, unidad y merma por ingrediente; porciones base
+  y cantidad neta por asociación; merma específica opcional por receta;
+  costo total y por porción en pesos mexicanos.
+- `src/pages/HomePage.tsx`: incorpora la nueva sección.
+- `src/domain/costingSettings.test.ts`: pruebas puras de escenarios completos,
+  incompletos y errores de unidades.
+
+### Reglas preliminares
+- Cantidad bruta de compra = cantidad neta escalada / (1 - merma / 100).
+- El precio se aplica con conversión g/kg o ml/l, o por pieza.
+- No se convierten masa y volumen sin factor académico específico.
+- La merma de receta, si existe, sustituye el valor por defecto del catálogo.
+- Se muestra costo cero solo si el precio guardado es realmente cero.
+- La vista previa no contabiliza empaques indivisibles ni gastos indirectos.
+- No se asignan precios ni cantidades a las recetas antiguas automáticamente.
+
+### Comprobaciones pendientes para aceptación
+1. `git pull --ff-only`, `npm ci`, `npx vitest run`, `npm run build`.
+   Guardar salidas. No se ha ejecutado el build desde esta sesión.
+2. Lanzar `npm run preview -- --host 127.0.0.1 --port 4173` con red.
+   Comprobar migración a esquema 4 en consola sin perder los registros previos.
+3. Capturar un ingrediente: 1 kg de jitomate por $40, merma 20%.
+   En una receta de cuatro porciones establecer 500 g netos.
+   Esperado: 625 g de compra, $25 totales, $6.25 por porción.
+4. Cambiar a ocho porciones: 1250 g brutos y $50 totales.
+5. Activar modo Offline; editar y guardar costo, recargar y comprobar
+   persistencia de precio, cantidad, merma y porciones.
+6. Probar ingredient sin precio y receta anterior sin cantidad: deben
+   mostrar pendientes, no costos inventados.
+7. Retirar una asociación y verificar que solo su configuración de línea
+   sea eliminada por cascada, sin borrar ingrediente ni su precio.
+8. Registrar capturas de cada escenario. La validación institucional
+   del modelo académico sigue pendiente.
+
+**Precaución:** no utilizar Clear site data ni cambiar de origen. La migración
+no constituye un respaldo; exportación y restauración siguen pendientes.
