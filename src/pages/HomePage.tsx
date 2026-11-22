@@ -2,6 +2,7 @@ import ModuleCard from '../components/ModuleCard'
 import OfflineStatus from '../components/OfflineStatus'
 import IngredientManager from '../features/ingredients/IngredientManager'
 import { RecipeManager } from '../features/recipes/RecipeManager'
+import CostingManager from '../features/costing/CostingManager'
 
 function HomePage() {
     return (
@@ -46,6 +47,9 @@ function HomePage() {
 
                 {/* Módulo de ingredientes */}
                 <IngredientManager />
+
+                {/* Módulo de costeos: datos persistentes en el mismo SQLite/OPFS */}
+                <CostingManager />
 
                 {/* Módulo de recetas */}
                 <div className="mt-8">
