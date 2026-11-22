@@ -111,3 +111,12 @@ Se incorporó el módulo de configuración y cálculo en la rama de trabajo:
 
 **Precaución:** no utilizar Clear site data ni cambiar de origen. La migración
 no constituye un respaldo; exportación y restauración siguen pendientes.
+
+## Evidencia manual recibida — costeo v4 (22/11/2026)
+- **Entorno:** Microsoft Edge, `127.0.0.1:4173`, DevTools configurado en modo **Offline** en la captura.
+- **Migración:** la consola indica `Versión del esquema: 4` y `Base de datos OPFS abierta`, con SQLite 3.53.4 y marca de primera escritura conservada del 11/11/2026. Es evidencia de apertura local del esquema ampliado, no una prueba automatizada de migración desde un respaldo.
+- **CRUD en la sesión:** el responsable informa que ingredientes, recetas y asociaciones continuaron operativos con y sin Internet. Se observan altas SQLite confirmadas para «Agua», «Sal» y «Aceite», con catálogo actualizado. No se atribuye a esta captura una batería automatizada.
+- **Costeo visible:** la receta seleccionada presenta 1 porción, factor 1.000, costo total **$200.47 MXN** y costo por porción **$200.47 MXN**. El desglose visible contiene Harina (400 g, $24.00), Queso (4.211 piezas, $157.89), Agua (408.163 ml, $0.31), Salsa de tomate (631.579 ml, $17.37) y Aceite (20 ml, $0.90). El redondeo corresponde a la presentación; confirmar unidades comerciales, cantidades y número real de porciones con el área académica.
+- **Consola:** aparece `AbortError: The play() request was interrupted by a call to pause()` y una advertencia `[Violation] 'click' handler took 843ms`. No se observa error SQLite en la captura. Investigar el origen de `play()/pause()` solo si persiste o afecta la aplicación.
+- **Alcance:** la funcionalidad de costeo y su uso offline se consideran **verificados manualmente de forma preliminar** en este entorno. Falta conservar logs de `npm run build` y `npx vitest run`, verificar persistencia tras recarga offline con los mismos datos de costeo, validar escalado y fórmulas, y probar el caso de recetas incompletas.
+- **Control del porcentaje:** el **80% es candidato funcional interno**, no validación institucional ni conclusión de todas las pruebas de aceptación. El PR sigue en borrador.
