@@ -112,9 +112,15 @@ self.addEventListener('fetch', (event) => {
       !url.pathname.startsWith(scope.pathname)) return
 
   event.respondWith((async () => {
-    const resourceUrl = request.mode === 'navigate'
-      ? new URL('./index.html', scope).href
-      : url.href
+    // La navegación debe devolver la shell aun con ?utm_source u otros
+    // parámetros. Para activos versionados de Vite, la caché no depende
+    // de parámetros de seguimiento: solo de la ruta del recurso.
+    const appShell = new URL('./index.html', scope).href
+    const resourceUrl = request.mode === 'navigate' ||
+        url.pathname === scope.pathname ||
+        url.pathname === new URL(appShell).pathname
+      ? appShell
+      : url.origin + url.pathname
     const cached = await findCachedResponse(resourceUrl)
     if (cached) return cached
 
