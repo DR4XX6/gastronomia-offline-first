@@ -120,3 +120,27 @@ no constituye un respaldo; exportación y restauración siguen pendientes.
 - **Consola:** aparece `AbortError: The play() request was interrupted by a call to pause()` y una advertencia `[Violation] 'click' handler took 843ms`. No se observa error SQLite en la captura. Investigar el origen de `play()/pause()` solo si persiste o afecta la aplicación.
 - **Alcance:** la funcionalidad de costeo y su uso offline se consideran **verificados manualmente de forma preliminar** en este entorno. Falta conservar logs de `npm run build` y `npx vitest run`, verificar persistencia tras recarga offline con los mismos datos de costeo, validar escalado y fórmulas, y probar el caso de recetas incompletas.
 - **Control del porcentaje:** el **80% es candidato funcional interno**, no validación institucional ni conclusión de todas las pruebas de aceptación. El PR sigue en borrador.
+
+## Cierre del corte funcional interno del 80% — 22/11/2026
+
+**Resultado:** 80% funcional interno sustentado con validación manual de uso offline y comprobación automatizada de integración, no equivalente a aprobación institucional ni a prueba piloto concluida.
+
+### Evidencia automática obtenida de GitHub Actions
+- Ejecución PR: https://github.com/DR4XX6/gastronomia-offline-first/actions/runs/45064665756
+- Estado: `completed`, conclusión: `success`.
+- Etapa `npx vitest run`: **3 archivos de pruebas y 28 pruebas aprobadas**.
+- Etapa `npm run build`: compilación exitosa con TypeScript y Vite.
+- Generación del Service Worker: **11 rutas en precaché** (revisión de esa compilación `49a7d853e41a`).
+- Comprobación de artefactos: `index.html`, `service-worker.js`, `manifest.webmanifest` y SQLite WASM presentes.
+- Ejecución adicional originada por `push`: https://github.com/DR4XX6/gastronomia-offline-first/actions/runs/45064664509 — finalizó correctamente.
+
+### Evidencia manual de aceptación reportada
+- El responsable recargó la aplicación en Edge con DevTools → Offline y verificó que las cantidades, mermas, precios y porciones previamente capturados seguían disponibles.
+- El esquema local se mantuvo en v4, con seis tablas verificadas, SQLite 3.53.4 y OPFS abierto, sin errores ni advertencias de consola en la captura final.
+- En la receta de pizza se registraron **5 porciones base** y se calcularon **11 deseadas**: factor 2.2, costo original mostrado de $200.47 MXN, costo escalado de $441.03 MXN, costo por porción mostrado de $40.09 MXN (cifras de interfaz, con redondeo).
+
+### Alcance pendiente posterior al 80%
+- Validación docente de criterios gastronómicos y redondeo comercial.
+- PDF de fichas técnicas institucionales.
+- Pruebas multiplataforma y con estudiantes; respaldo/restauración de OPFS.
+- El PR continúa en borrador mientras se planifica la siguiente etapa; no mezclar a `main` sin revisión.
