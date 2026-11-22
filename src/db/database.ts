@@ -1,6 +1,7 @@
 import type { Ingredient } from '../domain/ingredient'
 import type { Recipe } from '../domain/recipe'
 import type { RecipeIngredient } from '../domain/recipeIngredient'
+import type { CostingCommand, CostingSnapshot } from '../domain/costingSettings'
 
 type DatabaseMessage =
         | {
@@ -42,6 +43,8 @@ type DatabaseMessage =
             requestId: number
             message: string
         }
+    | { type: 'costing-result'; requestId: number; snapshot: CostingSnapshot }
+    | { type: 'costing-error'; requestId: number; message: string }
 
 type IngredientCommand =
     | { type: 'ingredients:list' }
@@ -61,6 +64,11 @@ type RecipeIngredientCommand =
     | { type: 'recipe-ingredients:delete'; id: string; recipeId: string }
 
 type PendingRequest =
+    | {
+          kind: 'costing'
+          resolve: (snapshot: CostingSnapshot) => void
+          reject: (error: Error) => void
+      }
     | {
           kind: 'ingredients'
           resolve: (ingredients: Ingredient[]) => void
@@ -135,7 +143,15 @@ export function initializeLocalDatabase(): Promise<string> {
 
                 pendingRequests.delete(message.requestId)
 
-                if (request.kind === 'ingredients') {
+                if (request.kind === 'costing') {
+                    if (message.type === 'costing-result') {
+                        request.resolve(message.snapshot)
+                    } else if (message.type === 'costing-error') {
+                        request.reject(new Error(message.message))
+                    } else {
+                        request.reject(new Error('Respuesta inesperada de costeos'))
+                    }
+                } else if (request.kind === 'ingredients') {
                     if (message.type === 'ingredients-result') {
                         request.resolve(message.ingredients)
                     } else if (message.type === 'ingredients-error') {
@@ -436,4 +452,28 @@ export function deleteRecipeIngredient(
         id: cleanId,
         recipeId: cleanRecipeId,
     })
+}
+
+
+/** API local de costeos; usa el mismo Worker y OPFS que los demás módulos. */
+export async function sendCostingRequest(command: CostingCommand): Promise<CostingSnapshot> {
+    await initializeLocalDatabase()
+    return new Promise<CostingSnapshot>((resolve, reject) => {
+        if (!worker) {
+            reject(new Error('SQLite no está disponible'))
+            return
+        }
+        const requestId = ++nextRequestId
+        pendingRequests.set(requestId, { kind: 'costing', resolve, reject })
+        try {
+            worker.postMessage({ ...command, requestId })
+        } catch (error) {
+            pendingRequests.delete(requestId)
+            reject(error instanceof Error ? error : new Error(String(error)))
+        }
+    })
+}
+
+export function listCostingSettings(): Promise<CostingSnapshot> {
+    return sendCostingRequest({ type: 'costing:list' })
 }
